@@ -18,7 +18,6 @@ if not os.path.exists(UPLOAD_DIR):
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    # Stores chat turns and references to saved files
     c.execute('''CREATE TABLE IF NOT EXISTS chat_logs 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   timestamp TEXT, 
@@ -26,16 +25,11 @@ def init_db():
                   role TEXT, 
                   content TEXT,
                   file_path TEXT)''')
-
-
-    # Models Table
     c.execute('''CREATE TABLE IF NOT EXISTS model_list 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   model_id TEXT UNIQUE)''')
-    
-    # Default model if the table is empty
     c.execute("INSERT OR IGNORE INTO model_list (model_id) VALUES (?)", 
-              ("openai/gpt-oss-120b:free",))
+              ("openai/gpt-3.5-turbo",)) # Default fallback
     conn.commit()
     conn.close()
 
@@ -47,10 +41,6 @@ def save_to_db(model, role, content, file_path=None):
     conn.commit()
     conn.close()
 
-# 3. UI Layout
-st.set_page_config(page_title="OpenRouter Pro", page_icon="📁", layout="wide")
-init_db()
-
 def add_model(name):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -58,7 +48,7 @@ def add_model(name):
         c.execute("INSERT INTO model_list (model_id) VALUES (?)", (name,))
         conn.commit()
     except sqlite3.IntegrityError:
-        pass # Model already exists
+        pass
     conn.close()
 
 def get_all_models():
@@ -69,7 +59,10 @@ def get_all_models():
     conn.close()
     return models
 
-# Sidebar: Configuration & File Vault
+# 3. UI Layout
+st.set_page_config(page_title="OpenRouter Pro", page_icon="📁", layout="wide")
+init_db()
+
 with st.sidebar:
     st.title("Settings & Vault")
     
@@ -78,24 +71,26 @@ with st.sidebar:
     available_models = get_all_models()
     model_name = st.selectbox("Choose Model", options=available_models)
     
-    # Form to add new models
     with st.expander("➕ Add New Model"):
         new_model_input = st.text_input("OpenRouter Model ID")
         if st.button("Add to List"):
             if new_model_input:
                 add_model(new_model_input)
-                st.rerun() # Refresh to show in selectbox
+                st.rerun()
+    
+    st.divider()
+
+    # --- MEMORY TOGGLE ---
+    st.subheader("🧠 Conversation Memory")
+    use_memory = st.toggle("Enable Chat Memory", value=True, help="If OFF, the AI won't remember previous messages in the current session.")
     
     st.divider()
     
     # --- FILE VAULT ---
     st.subheader("📁 File Vault")
     saved_files = os.listdir(UPLOAD_DIR)
-    
     if saved_files:
         selected_vault_file = st.selectbox("Reuse a saved file:", ["None"] + saved_files)
-        if selected_vault_file != "None":
-            st.info(f"Using: {selected_vault_file}")
     else:
         st.write("No files saved yet.")
         selected_vault_file = "None"
@@ -122,22 +117,17 @@ if prompt_data:
     context_from_file = ""
     saved_path = None
 
-    # Handle NEW File Uploads
     if prompt_data.get("files"):
         for uploaded_file in prompt_data["files"]:
             saved_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
-            # Save actual file to disk
             with open(saved_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
-            
-            # Extract content for AI
             try:
                 content = uploaded_file.getvalue().decode("utf-8")
                 context_from_file += f"\n\n[New Attachment: {uploaded_file.name}]\n{content}"
             except:
                 context_from_file += f"\n\n[File saved: {uploaded_file.name} (Binary)]"
 
-    # Handle REUSING File from Vault
     elif selected_vault_file != "None":
         saved_path = os.path.join(UPLOAD_DIR, selected_vault_file)
         try:
@@ -148,24 +138,30 @@ if prompt_data:
             context_from_file += f"\n\n[Reusing: {selected_vault_file} (Binary)]"
 
     full_prompt = user_text + context_from_file
-
-    # Update UI & DB (User side)
     st.session_state.messages.append({"role": "user", "content": full_prompt})
+    
     with st.chat_message("user"):
         st.markdown(full_prompt)
     save_to_db(model_name, "user", user_text, saved_path)
 
-    # 5. OpenRouter API Call
+    # 5. API Call with Memory Logic
     try:
         client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=API_KEY)
         
+        # Prepare messages based on toggle
+        if use_memory:
+            api_messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages]
+        else:
+            # Only send the VERY LAST message (the current one)
+            api_messages = [{"role": "user", "content": full_prompt}]
+
         with st.chat_message("assistant"):
             resp_container = st.empty()
             full_response = ""
             
             stream = client.chat.completions.create(
                 model=model_name,
-                messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
+                messages=api_messages,
                 stream=True
             )
 
@@ -175,8 +171,6 @@ if prompt_data:
                     resp_container.markdown(full_response + "▌")
             
             resp_container.markdown(full_response)
-            
-            # Save Assistant Response
             st.session_state.messages.append({"role": "assistant", "content": full_response})
             save_to_db(model_name, "assistant", full_response)
 
