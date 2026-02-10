@@ -19,12 +19,15 @@ def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS chat_logs 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                  timestamp TEXT, 
-                  model TEXT, 
-                  role TEXT, 
-                  content TEXT,
-                  file_path TEXT)''')
+             (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+              timestamp TEXT, 
+              model TEXT, 
+              role TEXT, 
+              content TEXT,
+              file_path TEXT,
+              prompt_tokens INTEGER,
+              completion_tokens INTEGER,
+              total_tokens INTEGER)''')
     c.execute('''CREATE TABLE IF NOT EXISTS model_list 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   model_id TEXT UNIQUE)''')
@@ -33,11 +36,11 @@ def init_db():
     conn.commit()
     conn.close()
 
-def save_to_db(model, role, content, file_path=None):
+def save_to_db(model, role, content, file_path=None, p_tok=0, c_tok=0, t_tok=0):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("INSERT INTO chat_logs (timestamp, model, role, content, file_path) VALUES (?, ?, ?, ?, ?)",
-              (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), model, role, content, file_path))
+    c.execute("INSERT INTO chat_logs (timestamp, model, role, content, file_path, prompt_tokens, completion_tokens, total_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+              (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), model, role, content, file_path, p_tok, c_tok, t_tok))
     conn.commit()
     conn.close()
 
@@ -162,15 +165,33 @@ if prompt_data:
             stream = client.chat.completions.create(
                 model=model_name,
                 messages=api_messages,
-                stream=True
+                stream=True,
+                stream_options={"include_usage": True}
             )
 
+            completion_tokens = 0
+            total_tokens = 0
+            full_response = ""
+
             for chunk in stream:
-                if chunk.choices[0].delta.content:
+                # 1. Handle Content
+                if chunk.choices and chunk.choices[0].delta.content:
                     full_response += chunk.choices[0].delta.content
                     resp_container.markdown(full_response + "▌")
-            
+                
+                # 2. Handle Usage (usually comes in the last chunk)
+                if chunk.usage:
+                    prompt_tokens = chunk.usage.prompt_tokens
+                    completion_tokens = chunk.usage.completion_tokens
+                    total_tokens = chunk.usage.total_tokens
+
             resp_container.markdown(full_response)
+
+            # Save User message (approximate or leave 0 if you only care about total cost)
+            save_to_db(model_name, "user", user_text, saved_path) 
+
+            # Save Assistant message WITH exact tokens
+            save_to_db(model_name, "assistant", full_response, p_tok=prompt_tokens, c_tok=completion_tokens, t_tok=total_tokens)
             st.session_state.messages.append({"role": "assistant", "content": full_response})
             save_to_db(model_name, "assistant", full_response)
 
