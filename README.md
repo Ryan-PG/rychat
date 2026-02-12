@@ -2,6 +2,9 @@
 
 **OpenRouter Pro** is a powerful, localized AI chat application. It combines the flexibility of the OpenRouter API with a persistent SQLite backend and a sophisticated file management system.
 
+## Preview
+<img src="./image.png" alt="Preview" width="1000">
+
 ## 🚀 Key Features
 
 * **🧠 Intelligent Memory Toggle:** Choose whether the AI "remembers" the current conversation.
@@ -13,7 +16,7 @@
 * **📁 Permanent File Vault:** Upload files once to the `uploaded_files/` directory and reuse them in future chats without re-uploading.
 * **💾 SQLite Persistence:** All chat logs, model lists, and file paths are stored in a local `chat_history.db` for complete auditability.
 * **📎 Smart File Handling:** Detects new uploads vs. vault selections and automatically injects file content into the AI's context.
-* * **🔄️ Token Counter:** Counts and stores used tokens into db.
+* **🔄️ Token Counter:** Counts and stores used tokens into db.
 
 ---
 
