@@ -13,6 +13,7 @@
 * **📁 Permanent File Vault:** Upload files once to the `uploaded_files/` directory and reuse them in future chats without re-uploading.
 * **💾 SQLite Persistence:** All chat logs, model lists, and file paths are stored in a local `chat_history.db` for complete auditability.
 * **📎 Smart File Handling:** Detects new uploads vs. vault selections and automatically injects file content into the AI's context.
+* * **🔄️ Token Counter:** Counts and stores used tokens into db.
 
 ---
 

@@ -32,7 +32,7 @@ def init_db():
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   model_id TEXT UNIQUE)''')
     c.execute("INSERT OR IGNORE INTO model_list (model_id) VALUES (?)", 
-              ("openai/gpt-3.5-turbo",)) # Default fallback
+              ("qwen/qwen2.5-vl-72b-instruct",)) # Default fallback
     conn.commit()
     conn.close()
 
@@ -193,7 +193,6 @@ if prompt_data:
             # Save Assistant message WITH exact tokens
             save_to_db(model_name, "assistant", full_response, p_tok=prompt_tokens, c_tok=completion_tokens, t_tok=total_tokens)
             st.session_state.messages.append({"role": "assistant", "content": full_response})
-            save_to_db(model_name, "assistant", full_response)
 
     except Exception as e:
         st.error(f"API Error: {str(e)}")
